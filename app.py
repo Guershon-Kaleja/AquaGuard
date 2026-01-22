@@ -1,4 +1,5 @@
 import os
+os.environ["GOOGLE_CLOUD_FIRESTORE_FORCE_REST"] = "true"
 from flask import Flask, request, send_from_directory
 from flask_cors import CORS
 import firebase_admin
