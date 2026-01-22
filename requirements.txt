@@ -1,4 +1,5 @@
 flask
 flask-cors
 firebase-admin
+google-cloud-firestore
 gunicorn
