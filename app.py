@@ -1,46 +1,13 @@
 import os
-import firebase_admin
+import requests
 from flask import Flask, request, send_from_directory
 from flask_cors import CORS
-from firebase_admin import credentials, firestore
-
-# Force le mode REST pour éviter que Render ne crash par manque de RAM
-os.environ["GOOGLE_CLOUD_FIRESTORE_FORCE_REST"] = "true"
 
 app = Flask(__name__)
 CORS(app)
 
-# INITIALISATION SANS FICHIER JSON
-if not firebase_admin._apps:
-    try:
-        # Récupération des variables depuis Render
-        proj_id = os.environ.get("FIREBASE_PROJECT_ID")
-        client_email = os.environ.get("FIREBASE_CLIENT_EMAIL")
-        private_key = os.environ.get("FIREBASE_PRIVATE_KEY")
-
-        if private_key and client_email and proj_id:
-            # Correction automatique des sauts de ligne (\n)
-            if "\\n" in private_key:
-                private_key = private_key.replace("\\n", "\n")
-            
-            # Reconstruction du certificat en mémoire
-            cred_dict = {
-                "type": "service_account",
-                "project_id": proj_id,
-                "private_key": private_key,
-                "client_email": client_email,
-                "token_uri": "https://oauth2.googleapis.com/token",
-            }
-            
-            cred = credentials.Certificate(cred_dict)
-            firebase_admin.initialize_app(cred)
-            print("✅ CONNEXION FIREBASE RÉUSSIE !")
-        else:
-            print("❌ ERREUR : Variables d'environnement manquantes sur Render")
-    except Exception as e:
-        print(f"❌ ERREUR INITIALISATION : {e}")
-
-db = firestore.client()
+# URL copiée de ta capture d'écran (on ajoute /logs.json à la fin)
+FIREBASE_URL = "https://aquaguard-e5ecf-default-rtdb.firebaseio.com/logs.json"
 
 @app.route('/')
 def serve_dashboard():
@@ -50,24 +17,33 @@ def serve_dashboard():
 def receive_sensor_data():
     try:
         data = request.get_json()
+        
+        # Vérification de la clé API [cite: 3, 14]
         if not data or data.get('api_key') != "AquaGuard_Secret_Key_2026":
-            return {"error": "Clé API invalide"}, 401
+            return {"error": "Unauthorized"}, 401
 
+        # Préparation des données [cite: 10, 11, 14]
         f_up = float(data.get('flow_up', 0))
         f_down = float(data.get('flow_down', 0))
         
-        # Enregistrement
-        document = {
+        payload = {
             "flow_up": f_up,
             "flow_down": f_down,
             "status": "FUITE" if f_up > (f_down + 1.0) else "NORMAL",
-            "timestamp": firestore.SERVER_TIMESTAMP
+            "timestamp": {".sv": "timestamp"} # Heure automatique Firebase
         }
-        
-        db.collection('logs').add(document)
-        return {"status": "success"}, 200
+
+        # Envoi direct sans certificat lourd
+        r = requests.post(FIREBASE_URL, json=payload)
+
+        if r.status_code == 200:
+            print(f"✅ Succès: Amont {f_up} L/min")
+            return {"status": "success"}, 200
+        else:
+            return {"error": r.text}, 500
+
     except Exception as e:
-        print(f"❌ ERREUR DATA : {e}")
+        print(f"❌ Erreur: {e}")
         return {"error": str(e)}, 500
 
 if __name__ == '__main__':
