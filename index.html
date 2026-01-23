@@ -3,121 +3,154 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AquaGuard - Dashboard</title>
+    <title>AquaGuard Pro - Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* TON DESIGN D'ORIGINE */
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #333; }
-        .dashboard { max-width: 1000px; margin: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
-        .card h3 { margin-top: 0; color: #555; }
-        .value { font-size: 2.5rem; font-weight: bold; color: #007bff; margin: 10px 0; }
-        .unit { font-size: 1rem; color: #777; }
-        .status-card { grid-column: 1 / -1; }
-        #status { font-size: 1.5rem; font-weight: bold; padding: 10px; border-radius: 8px; display: inline-block; margin-top: 10px; }
-        .status-normal { background-color: #d4edda; color: #155724; }
-        .status-fuite { background-color: #f8d7da; color: #721c24; animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0.7; } }
-        .chart-container { grid-column: 1 / -1; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        :root { --primary: #007bff; --danger: #dc3545; --success: #28a745; --dark: #343a40; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        
+        /* LOGIN STYLE */
+        #login-container { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; width: 350px; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        
+        /* DASHBOARD STYLE */
+        #main-dashboard { display: none; width: 95%; max-width: 1100px; margin: 20px auto; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; position: relative; }
+        .value { font-size: 3rem; font-weight: bold; color: var(--primary); }
+        .label { font-size: 1.1rem; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        
+        /* ALERTE FUITE */
+        .status-box { grid-column: 1 / -1; padding: 20px; font-size: 1.5rem; font-weight: bold; border-radius: 10px; }
+        .bg-ok { background: #d4edda; color: #155724; border: 2px solid var(--success); }
+        .bg-leak { background: #f8d7da; color: #721c24; border: 2px solid var(--danger); animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+
+        .btn-export { background: var(--dark); margin-top: 20px; width: auto; padding: 10px 25px; }
+        .chart-container { background: white; padding: 20px; border-radius: 15px; margin-top: 20px; }
     </style>
 </head>
 <body>
 
-    <h1 style="text-align: center; color: #007bff;">💧 AquaGuard System</h1>
+    <div id="login-container">
+        <h2 style="color: var(--primary)">💧 AquaGuard Login</h2>
+        <input type="password" id="pass-input" placeholder="Code d'accès">
+        <button onclick="checkLogin()">Se connecter</button>
+        <p id="login-err" style="color: red; display: none;">Code incorrect</p>
+    </div>
 
-    <div class="dashboard">
-        <div class="card">
-            <h3>Débit Amont</h3>
-            <div id="val-up" class="value">--</div>
-            <div class="unit">Litre / minute</div>
+    <div id="main-dashboard">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h1 style="color: var(--dark)">Tableau de Bord AquaGuard</h1>
+            <button class="btn-export" onclick="downloadCSV()">📥 Exporter CSV</button>
         </div>
 
-        <div class="card">
-            <h3>Débit Aval</h3>
-            <div id="val-down" class="value">--</div>
-            <div class="unit">Litre / minute</div>
-        </div>
-
-        <div class="card status-card">
-            <h3>État du Réseau</h3>
-            <div id="status" class="status-normal">Chargement...</div>
+        <div class="grid">
+            <div class="card">
+                <div class="label">Flux Entrant (Amont)</div>
+                <div id="val-up" class="value">0.00</div>
+                <div style="color: #999">L/min</div>
+            </div>
+            <div class="card">
+                <div class="label">Flux Sortant (Aval)</div>
+                <div id="val-down" class="value">0.00</div>
+                <div style="color: #999">L/min</div>
+            </div>
+            <div id="status-box" class="card status-box bg-ok">
+                ÉTAT DU RÉSEAU : <span id="status-text">NORMAL</span>
+            </div>
         </div>
 
         <div class="chart-container">
-            <canvas id="flowChart"></canvas>
+            <h3>Historique des débits (Dernières 24h)</h3>
+            <canvas id="flowChart" height="100"></canvas>
         </div>
     </div>
 
     <script>
-        // CONFIGURATION
         const DB_URL = "https://aquaguard-e5ecf-default-rtdb.firebaseio.com/logs.json";
+        let allLogs = []; // Stockage pour l'export CSV
 
-        // INITIALISATION DU GRAPHIQUE
-        const ctx = document.getElementById('flowChart').getContext('2d');
-        const flowChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Amont (L/min)',
-                    borderColor: '#007bff',
-                    data: [],
-                    tension: 0.3,
-                    fill: false
-                }, {
-                    label: 'Aval (L/min)',
-                    borderColor: '#6c757d',
-                    data: [],
-                    tension: 0.3,
-                    fill: false
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: { beginAtZero: true }
-                }
-            }
-        });
-
-        async function updateDashboard() {
-            try {
-                // On récupère les 10 dernières entrées
-                const response = await fetch(`${DB_URL}?orderBy="timestamp"&limitToLast(10)`);
-                const data = await response.json();
-
-                if (data && Object.keys(data).length > 0) {
-                    // Firebase renvoie un objet, on le convertit en tableau trié par temps
-                    const logs = Object.keys(data)
-                        .map(key => data[key])
-                        .sort((a, b) => a.timestamp - b.timestamp);
-
-                    const latest = logs[logs.length - 1];
-
-                    // Mise à jour des chiffres
-                    document.getElementById('val-up').innerText = latest.flow_up.toFixed(2);
-                    document.getElementById('val-down').innerText = latest.flow_down.toFixed(2);
-
-                    // Mise à jour de l'état
-                    const statusEl = document.getElementById('status');
-                    statusEl.innerText = latest.status;
-                    statusEl.className = latest.status === "FUITE" ? "status-fuite" : "status-normal";
-
-                    // Mise à jour du graphique
-                    const labels = logs.map(l => new Date(l.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-                    flowChart.data.labels = labels;
-                    flowChart.data.datasets[0].data = logs.map(l => l.flow_up);
-                    flowChart.data.datasets[1].data = logs.map(l => l.flow_down);
-                    flowChart.update('none');
-                }
-            } catch (error) {
-                console.error("Erreur dashboard:", error);
+        // 1. AUTHENTIFICATION SIMPLE
+        function checkLogin() {
+            const pass = document.getElementById('pass-input').value;
+            if (pass === "1234") { // <--- CHANGE TON MOT DE PASSE ICI
+                document.getElementById('login-container').style.display = 'none';
+                document.getElementById('main-dashboard').style.display = 'block';
+                document.body.style.display = 'block';
+                initDashboard();
+            } else {
+                document.getElementById('login-err').style.display = 'block';
             }
         }
 
-        // Rafraîchissement toutes les 3 secondes
-        setInterval(updateDashboard, 3000);
-        updateDashboard();
+        // 2. INITIALISATION CHART
+        let flowChart;
+        function initDashboard() {
+            const ctx = document.getElementById('flowChart').getContext('2d');
+            flowChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'AMONT', borderColor: '#007bff', backgroundColor: 'rgba(0,123,255,0.1)', data: [], fill: true },
+                        { label: 'AVAL', borderColor: '#6c757d', data: [], fill: false, borderDash: [5, 5] }
+                    ]
+                }
+            });
+            setInterval(updateData, 3000);
+            updateData();
+        }
+
+        // 3. RÉCUPÉRATION DES DONNÉES
+        async function updateData() {
+            try {
+                const response = await fetch(`${DB_URL}?orderBy="timestamp"&limitToLast(20)`);
+                const data = await response.json();
+                if (!data) return;
+
+                allLogs = Object.keys(data).map(k => data[k]).sort((a,b) => a.timestamp - b.timestamp);
+                const latest = allLogs[allLogs.length - 1];
+
+                // Affichage Valeurs
+                document.getElementById('val-up').innerText = latest.flow_up.toFixed(2);
+                document.getElementById('val-down').innerText = latest.flow_down.toFixed(2);
+
+                // Gestion Alerte Fuite
+                const box = document.getElementById('status-box');
+                const txt = document.getElementById('status-text');
+                if (latest.status === "FUITE") {
+                    box.className = "card status-box bg-leak";
+                    txt.innerText = "⚠️ FUITE DÉTECTÉE";
+                } else {
+                    box.className = "card status-box bg-ok";
+                    txt.innerText = "SÉCURISÉ";
+                }
+
+                // Graphique
+                flowChart.data.labels = allLogs.map(l => new Date(l.timestamp).toLocaleTimeString());
+                flowChart.data.datasets[0].data = allLogs.map(l => l.flow_up);
+                flowChart.data.datasets[1].data = allLogs.map(l => l.flow_down);
+                flowChart.update('none');
+
+            } catch (e) { console.error(e); }
+        }
+
+        // 4. EXPORT CSV
+        function downloadCSV() {
+            let csv = "Date,Heure,Flux Amont,Flux Aval,Statut\n";
+            allLogs.forEach(l => {
+                const d = new Date(l.timestamp);
+                csv += `${d.toLocaleDateString()},${d.toLocaleTimeString()},${l.flow_up},${l.flow_down},${l.status}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('href', url);
+            a.setAttribute('download', 'aquaguard_data.csv');
+            a.click();
+        }
     </script>
 </body>
 </html>
