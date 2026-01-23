@@ -6,121 +6,118 @@
     <title>AquaGuard - Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f9; text-align: center; padding: 20px; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-        .card { padding: 20px; border-radius: 10px; border: 1px solid #eee; }
-        .value { font-size: 2.5em; font-weight: bold; color: #007bff; }
-        .status-ok { color: #28a745; font-weight: bold; font-size: 1.5em; }
-        .status-leak { color: #dc3545; font-weight: bold; font-size: 1.5em; animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0; } }
-        canvas { max-width: 100%; margin-top: 20px; }
+        /* TON DESIGN D'ORIGINE */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #333; }
+        .dashboard { max-width: 1000px; margin: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+        .card h3 { margin-top: 0; color: #555; }
+        .value { font-size: 2.5rem; font-weight: bold; color: #007bff; margin: 10px 0; }
+        .unit { font-size: 1rem; color: #777; }
+        .status-card { grid-column: 1 / -1; }
+        #status { font-size: 1.5rem; font-weight: bold; padding: 10px; border-radius: 8px; display: inline-block; margin-top: 10px; }
+        .status-normal { background-color: #d4edda; color: #155724; }
+        .status-fuite { background-color: #f8d7da; color: #721c24; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.7; } }
+        .chart-container { grid-column: 1 / -1; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>💧 AquaGuard Monitor</h1>
-    
-    <div class="grid">
+    <h1 style="text-align: center; color: #007bff;">💧 AquaGuard System</h1>
+
+    <div class="dashboard">
         <div class="card">
-            <h3>Débit Amont (Up)</h3>
-            <div id="val-up" class="value">0.00</div>
-            <span>L/min</span>
+            <h3>Débit Amont</h3>
+            <div id="val-up" class="value">--</div>
+            <div class="unit">Litre / minute</div>
         </div>
+
         <div class="card">
-            <h3>Débit Aval (Down)</h3>
-            <div id="val-down" class="value">0.00</div>
-            <span>L/min</span>
+            <h3>Débit Aval</h3>
+            <div id="val-down" class="value">--</div>
+            <div class="unit">Litre / minute</div>
+        </div>
+
+        <div class="card status-card">
+            <h3>État du Réseau</h3>
+            <div id="status" class="status-normal">Chargement...</div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="flowChart"></canvas>
         </div>
     </div>
 
-    <div class="card">
-        <h3>État du Système</h3>
-        <div id="status" class="status-ok">INITIALISATION...</div>
-    </div>
+    <script>
+        // CONFIGURATION
+        const DB_URL = "https://aquaguard-e5ecf-default-rtdb.firebaseio.com/logs.json";
 
-    <canvas id="flowChart"></canvas>
-</div>
-
-<script>
-    // URL de ta Realtime Database (format JSON)
-    const DB_URL = "https://aquaguard-e5ecf-default-rtdb.firebaseio.com/logs.json";
-
-    // Configuration initiale du graphique Chart.js
-    const ctx = document.getElementById('flowChart').getContext('2d');
-    const myChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [
-                {
-                    label: 'Débit Amont (L/min)',
+        // INITIALISATION DU GRAPHIQUE
+        const ctx = document.getElementById('flowChart').getContext('2d');
+        const flowChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Amont (L/min)',
                     borderColor: '#007bff',
-                    backgroundColor: 'rgba(0, 123, 255, 0.1)',
                     data: [],
-                    fill: true,
-                    tension: 0.4
-                },
-                {
-                    label: 'Débit Aval (L/min)',
+                    tension: 0.3,
+                    fill: false
+                }, {
+                    label: 'Aval (L/min)',
                     borderColor: '#6c757d',
-                    borderDash: [5, 5],
                     data: [],
-                    fill: false,
-                    tension: 0.4
+                    tension: 0.3,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true }
                 }
-            ]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                y: { beginAtZero: true }
+            }
+        });
+
+        async function updateDashboard() {
+            try {
+                // On récupère les 10 dernières entrées
+                const response = await fetch(`${DB_URL}?orderBy="timestamp"&limitToLast(10)`);
+                const data = await response.json();
+
+                if (data && Object.keys(data).length > 0) {
+                    // Firebase renvoie un objet, on le convertit en tableau trié par temps
+                    const logs = Object.keys(data)
+                        .map(key => data[key])
+                        .sort((a, b) => a.timestamp - b.timestamp);
+
+                    const latest = logs[logs.length - 1];
+
+                    // Mise à jour des chiffres
+                    document.getElementById('val-up').innerText = latest.flow_up.toFixed(2);
+                    document.getElementById('val-down').innerText = latest.flow_down.toFixed(2);
+
+                    // Mise à jour de l'état
+                    const statusEl = document.getElementById('status');
+                    statusEl.innerText = latest.status;
+                    statusEl.className = latest.status === "FUITE" ? "status-fuite" : "status-normal";
+
+                    // Mise à jour du graphique
+                    const labels = logs.map(l => new Date(l.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+                    flowChart.data.labels = labels;
+                    flowChart.data.datasets[0].data = logs.map(l => l.flow_up);
+                    flowChart.data.datasets[1].data = logs.map(l => l.flow_down);
+                    flowChart.update('none');
+                }
+            } catch (error) {
+                console.error("Erreur dashboard:", error);
             }
         }
-    });
 
-    async function fetchData() {
-        try {
-            // Récupère les 15 derniers enregistrements triés par timestamp
-            const response = await fetch(`${DB_URL}?orderBy="timestamp"&limitToLast(15)`);
-            const data = await response.json();
-
-            if (data) {
-                // Convertir l'objet Firebase en tableau et trier par temps
-                const logs = Object.keys(data).map(key => data[key]);
-                logs.sort((a, b) => a.timestamp - b.timestamp);
-
-                const latest = logs[logs.length - 1];
-
-                // 1. Mise à jour de l'affichage textuel
-                document.getElementById('val-up').innerText = latest.flow_up.toFixed(2);
-                document.getElementById('val-down').innerText = latest.flow_down.toFixed(2);
-                
-                const statusEl = document.getElementById('status');
-                statusEl.innerText = latest.status;
-                statusEl.className = latest.status === "FUITE" ? "status-leak" : "status-ok";
-
-                // 2. Mise à jour du graphique
-                const labels = logs.map(l => {
-                    const date = new Date(l.timestamp);
-                    return date.getHours() + ":" + String(date.getMinutes()).padStart(2, '0') + ":" + String(date.getSeconds()).padStart(2, '0');
-                });
-                
-                myChart.data.labels = labels;
-                myChart.data.datasets[0].data = logs.map(l => l.flow_up);
-                myChart.data.datasets[1].data = logs.map(l => l.flow_down);
-                myChart.update('none'); // Update sans animation pour plus de fluidité
-            }
-        } catch (error) {
-            console.error("Erreur de récupération :", error);
-        }
-    }
-
-    // Rafraîchir toutes les 3 secondes
-    setInterval(fetchData, 3000);
-    fetchData(); // Premier appel immédiat
-</script>
-
+        // Rafraîchissement toutes les 3 secondes
+        setInterval(updateDashboard, 3000);
+        updateDashboard();
+    </script>
 </body>
 </html>
